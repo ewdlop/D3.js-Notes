@@ -1,4 +1,1337 @@
-d3.select(this).select("circle")
+.data(nestedData);
+        
+      areas.enter()
+        .append("path")
+        .attr("class", "area")
+        .merge(areas)
+        .attr("fill", ([key]) => color(key))
+        .attr("opacity", 0.2)
+        .attr("d", ([_, values]) => area(values))
+        .attr("opacity", 0)
+        .transition()
+        .duration(750)
+        .attr("opacity", 0.5);
+        
+      // Add lines on top of areas
+      const line = d3.line()
+        .x(d => x(d.date))
+        .y(d => y(d.value))
+        .curve(d3.curveMonotoneX);
+        
+      svg.selectAll(".line")
+        .data(nestedData)
+        .join("path")
+          .attr("class", "line")
+          .attr("fill", "none")
+          .attr("stroke", ([key]) => color(key))
+          .attr("stroke-width", 1.5)
+          .attr("d", ([_, values]) => line(values))
+          .attr("opacity", 0)
+          .transition()
+          .duration(750)
+          .attr("opacity", 1);
+    } else if (type === "bar") {
+      // Bar chart
+      svg.selectAll(".line").remove();
+      svg.selectAll(".area").remove();
+      
+      // Flatten the nested data
+      const barData = Array.from(nestedData).flatMap(([category, values]) => 
+        values.map(d => ({...d, category}))
+      );
+      
+      // Update x scale to use band scale
+      const xBand = d3.scaleBand()
+        .domain(barData.map(d => d.date))
+        .range([0, x.range()[1]])
+        .padding(0.1);
+        
+      const innerBand = d3.scaleBand()
+        .domain(categories)
+        .range([0, xBand.bandwidth()])
+        .padding(0.05);
+        
+      // Update x-axis
+      svg.select(".x-axis")
+        .transition()
+        .duration(750)
+        .call(d3.axisBottom(xBand)
+          .tickFormat(d => d.toLocaleDateString())
+        );
+        
+      // Add bars
+      const bars = svg.selectAll(".bar")
+        .data(barData);
+        
+      bars.enter()
+        .append("rect")
+        .attr("class", "bar")
+        .merge(bars)
+        .attr("x", d => xBand(d.date) + innerBand(d.category))
+        .attr("y", height)
+        .attr("width", innerBand.bandwidth())
+        .attr("height", 0)
+        .attr("fill", d => color(d.category))
+        .transition()
+        .duration(750)
+        .attr("y", d => y(d.value))
+        .attr("height", d => height - y(d.value));
+    }
+  }
+  
+  function createPieChart(data) {
+    // Clear previous chart
+    d3.select("#pie-container svg").remove();
+    
+    // Calculate category counts
+    const categoryCounts = d3.rollup(
+      data,
+      v => v.length,
+      d => d.category
+    );
+    
+    // Convert to array for pie chart
+    const pieData = Array.from(categoryCounts, ([key, value]) => ({key, value}));
+    
+    // Set up dimensions
+    const width = pieContainer.node().getBoundingClientRect().width - 40;
+    const height = 320;
+    const radius = Math.min(width, height) / 2;
+    
+    // Create SVG
+    const svg = pieContainer.append("svg")
+      .attr("width", width)
+      .attr("height", height)
+      .append("g")
+        .attr("transform", `translate(${width / 2}, ${height / 2})`);
+        
+    // Create color scale
+    const color = d3.scaleOrdinal()
+      .domain(pieData.map(d => d.key))
+      .range(d3.schemeCategory10);
+      
+    // Create pie layout
+    const pie = d3.pie()
+      .value(d => d.value)
+      .sort(null);
+      
+    // Create arc generator
+    const arc = d3.arc()
+      .innerRadius(0)
+      .outerRadius(radius - 20);
+      
+    // Create label arc
+    const labelArc = d3.arc()
+      .innerRadius(radius * 0.6)
+      .outerRadius(radius * 0.6);
+      
+    // Add pie slices
+    const arcs = svg.selectAll(".arc")
+      .data(pie(pieData))
+      .join("g")
+        .attr("class", "arc");
+        
+    arcs.append("path")
+      .attr("d", arc)
+      .attr("fill", d => color(d.data.key))
+      .attr("stroke", "white")
+      .attr("stroke-width", 1)
+      .style("opacity", 0)
+      .transition()
+      .duration(1000)
+      .style("opacity", 0.8);
+      
+    // Add labels
+    arcs.append("text")
+      .attr("transform", d => `translate(${labelArc.centroid(d)})`)
+      .attr("text-anchor", "middle")
+      .text(d => d.data.key)
+      .style("font-size", "12px")
+      .style("fill", "#333")
+      .style("opacity", 0)
+      .transition()
+      .delay(1000)
+      .duration(500)
+      .style("opacity", 1);
+      
+    // Add value labels
+    arcs.append("text")
+      .attr("transform", d => {
+        const [x, y] = arc.centroid(d);
+        const offset = radius * 0.35;
+        const midAngle = (d.startAngle + d.endAngle) / 2;
+        const pos = [x * offset / radius, y * offset / radius];
+        return `translate(${pos})`;
+      })
+      .attr("text-anchor", "middle")
+      .text(d => d.data.value)
+      .style("font-size", "12px")
+      .style("font-weight", "bold")
+      .style("fill", "white")
+      .style("opacity", 0)
+      .transition()
+      .delay(1000)
+      .duration(500)
+      .style("opacity", 1);
+      
+    // Add interactivity
+    arcs
+      .style("cursor", "pointer")
+      .on("mouseover", function(event, d) {
+        // Highlight slice
+        d3.select(this).select("path")
+          .transition()
+          .duration(200)
+          .attr("opacity", 1)
+          .attr("d", d3.arc()
+            .innerRadius(0)
+            .outerRadius(radius - 10)
+          );
+          
+        // Update metrics to show category data
+        updateMetricsForCategory(d.data.key);
+      })
+      .on("mouseout", function() {
+        // Reset slice
+        d3.select(this).select("path")
+          .transition()
+          .duration(200)
+          .attr("opacity", 0.8)
+          .attr("d", arc);
+          
+        // Reset metrics
+        updateMetrics(data);
+      })
+      .on("click", function(event, d) {
+        // Filter by category
+        filterByCategory(d.data.key);
+      });
+  }
+  
+  function updateTable(data) {
+    // Limit to 100 rows for performance
+    const tableData = data.slice(0, 100);
+    
+    // Create table rows
+    const rows = tbody.selectAll("tr")
+      .data(tableData)
+      .join("tr")
+        .style("border-bottom", "1px solid #dee2e6");
+        
+    // Add cells
+    rows.selectAll("td")
+      .data(d => [
+        d.id,
+        d.date.toLocaleDateString(),
+        d.category,
+        d.value,
+        d.value > 50 ? "High" : d.value > 20 ? "Medium" : "Low",
+        "actions"
+      ])
+      .join("td")
+        .style("padding", "10px")
+        .each(function(d, i) {
+          const cell = d3.select(this);
+          
+          if (i === 4) { // Status column
+            cell.append("span")
+              .attr("class", "status-badge")
+              .style("padding", "3px 8px")
+              .style("border-radius", "12px")
+              .style("font-size", "12px")
+              .style("background", d === "High" ? "#dc3545" : d === "Medium" ? "#ffc107" : "#28a745")
+              .style("color", d === "Medium" ? "#212529" : "white")
+              .text(d);
+          } else if (i === 5) { // Actions column
+            cell.html(`
+              <button class="view-btn" style="border: none; background: none; color: #4361ee; cursor: pointer;">View</button>
+              <button class="edit-btn" style="border: none; background: none; color: #4361ee; margin-left: 10px; cursor: pointer;">Edit</button>
+            `);
+            
+            cell.select(".view-btn")
+              .on("click", function() {
+                showDetails(rows.data()[rows._groups[0].indexOf(this.parentNode.parentNode)]);
+              });
+          } else {
+            cell.text(d);
+          }
+        });
+        
+    // Add search functionality
+    d3.select("#table-search").on("input", function() {
+      const searchTerm = this.value.toLowerCase();
+      
+      if (searchTerm.length < 2) {
+        // Reset table
+        updateTable(data);
+        return;
+      }
+      
+      // Filter data
+      const filteredData = data.filter(d => 
+        d.id.toString().includes(searchTerm) ||
+        d.category.toLowerCase().includes(searchTerm) ||
+        d.value.toString().includes(searchTerm)
+      );
+      
+      // Update table with filtered data
+      updateTable(filteredData.slice(0, 100));
+    });
+  }
+  
+  // Helper functions
+  function updateDashboard() {
+    // Get filter values
+    const dateRange = d3.select("#date-range").property("value");
+    const selectedCategories = categories.filter(c => 
+      d3.select(`#category-${c}`).property("checked")
+    );
+    const valueThreshold = d3.select("#value-slider").property("value");
+    
+    // Apply filters
+    let filteredData = data;
+    
+    // Date filter
+    if (dateRange !== "all") {
+      const now = new Date();
+      let startDate;
+      
+      switch(dateRange) {
+        case "7d":
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - 7);
+          break;
+        case "30d":
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - 30);
+          break;
+        case "90d":
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - 90);
+          break;
+        case "1y":
+          startDate = new Date(now);
+          startDate.setFullYear(now.getFullYear() - 1);
+          break;
+      }
+      
+      filteredData = filteredData.filter(d => d.date >= startDate);
+    }
+    
+    // Category filter
+    filteredData = filteredData.filter(d => 
+      selectedCategories.includes(d.category)
+    );
+    
+    // Value filter
+    filteredData = filteredData.filter(d => 
+      d.value >= valueThreshold
+    );
+    
+    // Update charts and table
+    createMainChart(filteredData);
+    createPieChart(filteredData);
+    updateTable(filteredData);
+    updateMetrics(filteredData);
+  }
+  
+  function resetFilters() {
+    // Reset date range
+    d3.select("#date-range").property("value", "all");
+    
+    // Reset categories
+    categories.forEach(c => {
+      d3.select(`#category-${c}`).property("checked", true);
+    });
+    
+    // Reset value slider
+    d3.select("#value-slider").property("value", minValue);
+    d3.select("#current-value").text(minValue);
+    
+    // Update dashboard
+    updateDashboard();
+  }
+  
+  function updateMetrics(data) {
+    // Update metric cards
+    const metrics = [
+      {label: "Total Items", value: data.length, icon: "📊", color: "#4361ee"},
+      {label: "Average Value", value: d3.mean(data, d => d.value).toFixed(2), icon: "📈", color: "#3a0ca3"},
+      {label: "Max Value", value: d3.max(data, d => d.value), icon: "🔺", color: "#f72585"},
+      {label: "Categories", value: Array.from(new Set(data.map(d => d.category))).length, icon: "🏷️", color: "#4cc9f0"}
+    ];
+    
+    d3.selectAll(".metric-value")
+      .data(metrics)
+      .text(d => d.value);
+  }
+  
+  function updateMetricsForCategory(category) {
+    // Filter data by category
+    const categoryData = data.filter(d => d.category === category);
+    
+    // Update metric cards for this category
+    const metrics = [
+      {label: "Category Items", value: categoryData.length, icon: "📊", color: "#4361ee"},
+      {label: "Category Average", value: d3.mean(categoryData, d => d.value).toFixed(2), icon: "📈", color: "#3a0ca3"},
+      {label: "Category Max", value: d3.max(categoryData, d => d.value), icon: "🔺", color: "#f72585"},
+      {label: "Category", value: category, icon: "🏷️", color: "#4cc9f0"}
+    ];
+    
+    d3.selectAll(".metric-value")
+      .data(metrics)
+      .text(d => d.value);
+  }
+  
+  function filterByCategory(category) {
+    // Check only this category
+    categories.forEach(c => {
+      d3.select(`#category-${c}`).property("checked", c === category);
+    });
+    
+    // Update dashboard
+    updateDashboard();
+  }
+  
+  function showDetails(item) {
+    // Create modal
+    const modal = d3.select("body")
+      .append("div")
+      .attr("class", "modal")
+      .style("position", "fixed")
+      .style("top", "0")
+      .style("left", "0")
+      .style("width", "100%")
+      .style("height", "100%")
+      .style("background", "rgba(0, 0, 0, 0.5)")
+      .style("display", "flex")
+      .style("align-items", "center")
+      .style("justify-content", "center")
+      .style("z-index", "1000");
+      
+    // Create modal content
+    const modalContent = modal.append("div")
+      .style("background", "white")
+      .style("border-radius", "4px")
+      .style("width", "500px")
+      .style("max-width", "90%")
+      .style("padding", "20px")
+      .style("position", "relative")
+      .style("max-height", "80vh")
+      .style("overflow-y", "auto");
+      
+    // Add close button
+    modalContent.append("button")
+      .style("position", "absolute")
+      .style("top", "10px")
+      .style("right", "10px")
+      .style("background", "none")
+      .style("border", "none")
+      .style("font-size", "20px")
+      .style("cursor", "pointer")
+      .text("×")
+      .on("click", function() {
+        modal.remove();
+      });
+      
+    // Add content
+    modalContent.append("h2")
+      .style("margin-top", "0")
+      .text(`Item Details: ${item.id}`);
+      
+    // Add details
+    const details = modalContent.append("div")
+      .style("margin-bottom", "20px");
+      
+    details.append("p")
+      .html(`<strong>Date:</strong> ${item.date.toLocaleDateString()}`);
+      
+    details.append("p")
+      .html(`<strong>Category:</strong> ${item.category}`);
+      
+    details.append("p")
+      .html(`<strong>Value:</strong> ${item.value}`);
+      
+    details.append("p")
+      .html(`<strong>Status:</strong> <span style="padding: 3px 8px; border-radius: 12px; font-size: 12px; background: ${item.value > 50 ? "#dc3545" : item.value > 20 ? "#ffc107" : "#28a745"}; color: ${item.value > 20 && item.value <= 50 ? "#212529" : "white"}">${item.value > 50 ? "High" : item.value > 20 ? "Medium" : "Low"}</span>`);
+      
+    // Add small chart
+    const chartContainer = modalContent.append("div")
+      .style("height", "200px")
+      .style("margin-bottom", "20px");
+      
+    // Find related items (same category)
+    const relatedItems = data
+      .filter(d => d.category === item.category)
+      .sort((a, b) => a.date - b.date);
+      
+    // Add mini chart
+    const margin = {top: 20, right: 20, bottom: 30, left: 40};
+    const chartWidth = 450;
+    const chartHeight = 150;
+    
+    const svg = chartContainer.append("svg")
+      .attr("width", chartWidth)
+      .attr("height", chartHeight)
+      .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+        
+    // Create scales
+    const x = d3.scaleTime()
+      .domain(d3.extent(relatedItems, d => d.date))
+      .range([0, chartWidth - margin.left - margin.right]);
+      
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(relatedItems, d => d.value) * 1.1])
+      .nice()
+      .range([chartHeight - margin.top - margin.bottom, 0]);
+      
+    // Add axes
+    svg.append("g")
+      .attr("class", "x-axis")
+      .attr("transform", `translate(0,${chartHeight - margin.top - margin.bottom})`)
+      .call(d3.axisBottom(x)
+        .ticks(5)
+        .tickFormat(d3.timeFormat("%b %d"))
+      );
+      
+    svg.append("g")
+      .attr("class", "y-axis")
+      .call(d3.axisLeft(y).ticks(5));
+      
+    // Add line
+    const line = d3.line()
+      .x(d => x(d.date))
+      .y(d => y(d.value))
+      .curve(d3.curveMonotoneX);
+      
+    svg.append("path")
+      .datum(relatedItems)
+      .attr("fill", "none")
+      .attr("stroke", "#4361ee")
+      .attr("stroke-width", 2)
+      .attr("d", line);
+      
+    // Highlight current item
+    svg.append("circle")
+      .attr("cx", x(item.date))
+      .attr("cy", y(item.value))
+      .attr("r", 6)
+      .attr("fill", "#f72585")
+      .attr("stroke", "white")
+      .attr("stroke-width", 2);
+      
+    // Add related items section
+    modalContent.append("h3")
+      .text("Related Items");
+      
+    // Add mini table
+    const table = modalContent.append("div")
+      .style("max-height", "200px")
+      .style("overflow-y", "auto")
+      .append("table")
+        .style("width", "100%")
+        .style("border-collapse", "collapse");
+        
+    // Add table header
+    table.append("thead")
+      .style("background", "#f8f9fa")
+      .append("tr")
+      .selectAll("th")
+      .data(["ID", "Date", "Value"])
+      .join("th")
+        .style("padding", "8px")
+        .style("text-align", "left")
+        .style("border-bottom", "2px solid #dee2e6")
+        .text(d => d);
+        
+    // Add table body
+    const relatedTable = table.append("tbody");
+    
+    relatedTable.selectAll("tr")
+      .data(relatedItems.slice(0, 10))
+      .join("tr")
+        .style("background", d => d.id === item.id ? "#e9ecef" : null)
+        .style("border-bottom", "1px solid #dee2e6")
+        .selectAll("td")
+        .data(d => [d.id, d.date.toLocaleDateString(), d.value])
+        .join("td")
+          .style("padding", "8px")
+          .text(d => d);
+          
+    // Add action buttons
+    const actions = modalContent.append("div")
+      .style("display", "flex")
+      .style("justify-content", "flex-end")
+      .style("gap", "10px")
+      .style("margin-top", "20px");
+      
+    actions.append("button")
+      .style("padding", "8px 16px")
+      .style("background", "#6c757d")
+      .style("color", "white")
+      .style("border", "none")
+      .style("border-radius", "4px")
+      .style("cursor", "pointer")
+      .text("Close")
+      .on("click", function() {
+        modal.remove();
+      });
+      
+    actions.append("button")
+      .style("padding", "8px 16px")
+      .style("background", "#4361ee")
+      .style("color", "white")
+      .style("border", "none")
+      .style("border-radius", "4px")
+      .style("cursor", "pointer")
+      .text("Edit Item")
+      .on("click", function() {
+        // Replace with edit form
+        modalContent.html("");
+        
+        modalContent.append("h2")
+          .style("margin-top", "0")
+          .text(`Edit Item: ${item.id}`);
+          
+        // Create form
+        const form = modalContent.append("form")
+          .style("display", "grid")
+          .style("gap", "15px")
+          .style("margin-top", "20px");
+          
+        // Add form fields
+        const dateField = form.append("div");
+        dateField.append("label")
+          .attr("for", "edit-date")
+          .style("display", "block")
+          .style("margin-bottom", "5px")
+          .style("font-weight", "bold")
+          .text("Date");
+          
+        dateField.append("input")
+          .attr("id", "edit-date")
+          .attr("type", "date")
+          .attr("value", item.date.toISOString().split("T")[0])
+          .style("width", "100%")
+          .style("padding", "8px")
+          .style("border", "1px solid #ced4da")
+          .style("border-radius", "4px");
+          
+        const categoryField = form.append("div");
+        categoryField.append("label")
+          .attr("for", "edit-category")
+          .style("display", "block")
+          .style("margin-bottom", "5px")
+          .style("font-weight", "bold")
+          .text("Category");
+          
+        categoryField.append("select")
+          .attr("id", "edit-category")
+          .style("width", "100%")
+          .style("padding", "8px")
+          .style("border", "1px solid #ced4da")
+          .style("border-radius", "4px")
+          .selectAll("option")
+          .data(categories)
+          .join("option")
+            .attr("value", d => d)
+            .property("selected", d => d === item.category)
+            .text(d => d);
+            
+        const valueField = form.append("div");
+        valueField.append("label")
+          .attr("for", "edit-value")
+          .style("display", "block")
+          .style("margin-bottom", "5px")
+          .style("font-weight", "bold")
+          .text("Value");
+          
+        valueField.append("input")
+          .attr("id", "edit-value")
+          .attr("type", "number")
+          .attr("value", item.value)
+          .attr("min", "0")
+          .attr("step", "1")
+          .style("width", "100%")
+          .style("padding", "8px")
+          .style("border", "1px solid #ced4da")
+          .style("border-radius", "4px");
+          
+        // Add form buttons
+        const formActions = form.append("div")
+          .style("display", "flex")
+          .style("justify-content", "flex-end")
+          .style("gap", "10px")
+          .style("margin-top", "20px");
+          
+        formActions.append("button")
+          .attr("type", "button")
+          .style("padding", "8px 16px")
+          .style("background", "#6c757d")
+          .style("color", "white")
+          .style("border", "none")
+          .style("border-radius", "4px")
+          .style("cursor", "pointer")
+          .text("Cancel")
+          .on("click", function() {
+            modal.remove();
+          });
+          
+        formActions.append("button")
+          .attr("type", "button")
+          .style("padding", "8px 16px")
+          .style("background", "#4361ee")
+          .style("color", "white")
+          .style("border", "none")
+          .style("border-radius", "4px")
+          .style("cursor", "pointer")
+          .text("Save Changes")
+          .on("click", function() {
+            // Show success message
+            form.remove();
+            
+            modalContent.append("div")
+              .style("text-align", "center")
+              .style("padding", "30px")
+              .html(`
+                <div style="font-size: 40px; margin-bottom: 20px;">✓</div>
+                <h3 style="margin-bottom: 20px;">Changes Saved Successfully</h3>
+                <p>Item #${item.id} has been updated.</p>
+                <button style="padding: 8px 16px; margin-top: 20px; background: #4361ee; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+              `)
+              .select("button")
+              .on("click", function() {
+                modal.remove();
+              });
+          });
+      });
+  }
+  
+  // Initialize dashboard
+  updateDashboard();
+  
+  // Add export button functionality
+  d3.select("#export-dashboard").on("click", function() {
+    alert("Dashboard export initiated. Your data will be downloaded shortly.");
+  });
+  
+  // Return dashboard controls
+  return {
+    updateDashboard,
+    resetFilters,
+    filterByCategory
+  };
+}
+
+// Conclusion: Best Practices for D3.js Projects
+
+// 1. Organize your code using modules or namespaces
+// - Separate data processing from visualization
+// - Create reusable chart components
+// - Use consistent naming conventions
+
+// 2. Follow a consistent development workflow
+// - Start with static visualization
+// - Add interactivity
+// - Implement transitions
+// - Add responsive behavior
+// - Add accessibility features
+
+// 3. Optimize for performance
+// - Use requestAnimationFrame for animations
+// - Throttle/debounce event handlers
+// - Implement data filtering and decimation
+// - Use canvas for very large datasets (>10,000 points)
+// - Profile and optimize rendering bottlenecks
+
+// 4. Ensure good user experience
+// - Provide clear visual feedback for interactions
+// - Include loading indicators for asynchronous operations
+// - Add smooth transitions between states
+// - Include helpful tooltips and legends
+// - Make visualizations keyboard accessible
+
+// 5. Implement clean data handling
+// - Validate and clean data before visualization
+// - Handle missing or invalid data gracefully
+// - Provide appropriate error messages
+// - Add data transformations as needed
+
+// 6. Design for different screen sizes
+// - Use relative units and responsive patterns
+// - Test on multiple devices
+// - Provide alternative views for mobile
+// - Adjust detail level based on available space
+
+// 7. Document your code
+// - Add comprehensive JSDoc comments
+// - Create a README with examples
+// - Include chart configuration options
+// - Document public API methods
+
+// 8. Write maintainable D3 code
+// - Use the enter-update-exit pattern consistently
+// - Always clean up event listeners and timers
+// - Separate concerns (data, DOM, styling)
+// - Create meaningful variable names
+
+// 9. Future-proof your visualizations
+// - Keep D3 version updated
+// - Use modern JavaScript features with polyfills
+// - Implement feature detection for browser capabilities
+// - Follow web standards and accessibility guidelines
+
+// 10. Testing strategies
+// - Write unit tests for data transformations
+// - Create visual regression tests for charts
+// - Test with different data scenarios
+// - Verify accessibility with automated tools
+```### Advanced Interactive Data Dashboard
+
+```javascript
+// Create a complete interactive dashboard with multiple coordinated views
+function createDashboard(data) {
+  // Set up container
+  const dashboard = d3.select("#dashboard")
+    .style("font-family", "Arial, sans-serif")
+    .style("color", "#333");
+    
+  // Add header
+  dashboard.append("header")
+    .style("padding", "20px")
+    .style("background", "#f8f9fa")
+    .style("border-bottom", "1px solid #dee2e6")
+    .html(`
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <h1 style="margin: 0; font-size: 24px;">Interactive Data Dashboard</h1>
+          <p style="margin: 5px 0 0 0; color: #6c757d;">Last updated: ${new Date().toLocaleDateString()}</p>
+        </div>
+        <div>
+          <button id="export-dashboard" style="padding: 8px 16px; background: #4361ee; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            Export Dashboard
+          </button>
+        </div>
+      </div>
+    `);
+    
+  // Add main container
+  const main = dashboard.append("main")
+    .style("display", "grid")
+    .style("grid-template-columns", "repeat(12, 1fr)")
+    .style("grid-template-rows", "auto auto auto")
+    .style("gap", "20px")
+    .style("padding", "20px");
+    
+  // Add filter sidebar
+  const sidebar = main.append("div")
+    .style("grid-column", "1 / span 3")
+    .style("grid-row", "1 / span 3")
+    .style("background", "white")
+    .style("border-radius", "4px")
+    .style("box-shadow", "0 1px 3px rgba(0,0,0,0.12)")
+    .style("padding", "20px");
+    
+  sidebar.append("h2")
+    .style("margin-top", "0")
+    .style("font-size", "18px")
+    .text("Filters");
+    
+  // Add date range filter
+  const dateFilter = sidebar.append("div")
+    .style("margin-bottom", "20px");
+    
+  dateFilter.append("label")
+    .attr("for", "date-range")
+    .style("display", "block")
+    .style("margin-bottom", "5px")
+    .style("font-weight", "bold")
+    .text("Date Range");
+    
+  dateFilter.append("select")
+    .attr("id", "date-range")
+    .style("width", "100%")
+    .style("padding", "8px")
+    .style("border", "1px solid #ced4da")
+    .style("border-radius", "4px")
+    .on("change", function() {
+      updateDashboard();
+    })
+    .selectAll("option")
+    .data([
+      {value: "7d", label: "Last 7 Days"},
+      {value: "30d", label: "Last 30 Days"},
+      {value: "90d", label: "Last 90 Days"},
+      {value: "1y", label: "Last Year"},
+      {value: "all", label: "All Time"}
+    ])
+    .join("option")
+      .attr("value", d => d.value)
+      .text(d => d.label);
+      
+  // Add category filter
+  const categoryFilter = sidebar.append("div")
+    .style("margin-bottom", "20px");
+    
+  categoryFilter.append("label")
+    .style("display", "block")
+    .style("margin-bottom", "5px")
+    .style("font-weight", "bold")
+    .text("Categories");
+    
+  // Get unique categories
+  const categories = Array.from(new Set(data.map(d => d.category))).sort();
+  
+  categoryFilter.selectAll(".category-checkbox")
+    .data(categories)
+    .join("div")
+      .attr("class", "category-checkbox")
+      .style("display", "flex")
+      .style("align-items", "center")
+      .style("margin-bottom", "5px")
+      .each(function(d) {
+        const checkbox = d3.select(this);
+        
+        checkbox.append("input")
+          .attr("type", "checkbox")
+          .attr("id", `category-${d}`)
+          .attr("value", d)
+          .attr("checked", true)
+          .style("margin-right", "5px")
+          .on("change", function() {
+            updateDashboard();
+          });
+          
+        checkbox.append("label")
+          .attr("for", `category-${d}`)
+          .text(d);
+      });
+      
+  // Add value range filter
+  const valueFilter = sidebar.append("div")
+    .style("margin-bottom", "20px");
+    
+  valueFilter.append("label")
+    .style("display", "block")
+    .style("margin-bottom", "5px")
+    .style("font-weight", "bold")
+    .text("Value Range");
+    
+  // Get min and max values
+  const minValue = d3.min(data, d => d.value);
+  const maxValue = d3.max(data, d => d.value);
+  
+  const valueSlider = valueFilter.append("div")
+    .style("display", "flex")
+    .style("flex-direction", "column")
+    .style("gap", "10px");
+    
+  valueSlider.append("div")
+    .style("display", "flex")
+    .style("justify-content", "space-between")
+    .html(`
+      <span id="min-value">${minValue}</span>
+      <span id="max-value">${maxValue}</span>
+    `);
+    
+  valueSlider.append("input")
+    .attr("type", "range")
+    .attr("id", "value-slider")
+    .attr("min", minValue)
+    .attr("max", maxValue)
+    .attr("value", minValue)
+    .style("width", "100%")
+    .on("input", function() {
+      d3.select("#current-value").text(this.value);
+    })
+    .on("change", function() {
+      updateDashboard();
+    });
+    
+  valueSlider.append("div")
+    .style("text-align", "center")
+    .html(`Current: <span id="current-value">${minValue}</span>`);
+    
+  // Add reset button
+  sidebar.append("button")
+    .attr("id", "reset-filters")
+    .style("width", "100%")
+    .style("padding", "8px")
+    .style("background", "#6c757d")
+    .style("color", "white")
+    .style("border", "none")
+    .style("border-radius", "4px")
+    .style("cursor", "pointer")
+    .text("Reset Filters")
+    .on("click", function() {
+      resetFilters();
+    });
+    
+  // Add chart containers
+  // Key metrics
+  const metricsContainer = main.append("div")
+    .attr("id", "metrics-container")
+    .style("grid-column", "4 / span 9")
+    .style("grid-row", "1 / span 1")
+    .style("display", "grid")
+    .style("grid-template-columns", "repeat(4, 1fr)")
+    .style("gap", "20px");
+    
+  // Create metric cards
+  const metrics = [
+    {label: "Total Items", value: data.length, icon: "📊", color: "#4361ee"},
+    {label: "Average Value", value: d3.mean(data, d => d.value).toFixed(2), icon: "📈", color: "#3a0ca3"},
+    {label: "Max Value", value: d3.max(data, d => d.value), icon: "🔺", color: "#f72585"},
+    {label: "Categories", value: categories.length, icon: "🏷️", color: "#4cc9f0"}
+  ];
+  
+  metricsContainer.selectAll(".metric-card")
+    .data(metrics)
+    .join("div")
+      .attr("class", "metric-card")
+      .style("background", "white")
+      .style("border-radius", "4px")
+      .style("box-shadow", "0 1px 3px rgba(0,0,0,0.12)")
+      .style("padding", "20px")
+      .style("display", "flex")
+      .style("align-items", "center")
+      .style("justify-content", "space-between")
+      .each(function(d) {
+        const card = d3.select(this);
+        
+        const textContent = card.append("div");
+        
+        textContent.append("div")
+          .style("font-size", "14px")
+          .style("color", "#6c757d")
+          .text(d.label);
+          
+        textContent.append("div")
+          .attr("class", "metric-value")
+          .style("font-size", "24px")
+          .style("font-weight", "bold")
+          .text(d.value);
+          
+        card.append("div")
+          .style("font-size", "30px")
+          .style("color", d.color)
+          .text(d.icon);
+      });
+      
+  // Main chart
+  const chartContainer = main.append("div")
+    .attr("id", "chart-container")
+    .style("grid-column", "4 / span 6")
+    .style("grid-row", "2 / span 1")
+    .style("background", "white")
+    .style("border-radius", "4px")
+    .style("box-shadow", "0 1px 3px rgba(0,0,0,0.12)")
+    .style("padding", "20px")
+    .style("height", "400px");
+    
+  chartContainer.append("div")
+    .style("display", "flex")
+    .style("justify-content", "space-between")
+    .style("align-items", "center")
+    .style("margin-bottom", "15px")
+    .html(`
+      <h3 style="margin: 0; font-size: 16px;">Value Distribution Over Time</h3>
+      <div class="chart-controls">
+        <select id="chart-type" style="padding: 5px; border: 1px solid #ced4da; border-radius: 4px;">
+          <option value="line">Line Chart</option>
+          <option value="bar">Bar Chart</option>
+          <option value="area">Area Chart</option>
+        </select>
+      </div>
+    `);
+    
+  // Right sidebar chart
+  const pieContainer = main.append("div")
+    .attr("id", "pie-container")
+    .style("grid-column", "10 / span 3")
+    .style("grid-row", "2 / span 1")
+    .style("background", "white")
+    .style("border-radius", "4px")
+    .style("box-shadow", "0 1px 3px rgba(0,0,0,0.12)")
+    .style("padding", "20px")
+    .style("height", "400px");
+    
+  pieContainer.append("h3")
+    .style("margin-top", "0")
+    .style("font-size", "16px")
+    .text("Category Distribution");
+    
+  // Data table
+  const tableContainer = main.append("div")
+    .attr("id", "table-container")
+    .style("grid-column", "4 / span 9")
+    .style("grid-row", "3 / span 1")
+    .style("background", "white")
+    .style("border-radius", "4px")
+    .style("box-shadow", "0 1px 3px rgba(0,0,0,0.12)")
+    .style("padding", "20px")
+    .style("height", "300px")
+    .style("overflow-y", "auto");
+    
+  tableContainer.append("div")
+    .style("display", "flex")
+    .style("justify-content", "space-between")
+    .style("align-items", "center")
+    .style("margin-bottom", "15px")
+    .html(`
+      <h3 style="margin: 0; font-size: 16px;">Data Records</h3>
+      <div class="table-controls">
+        <input type="text" id="table-search" placeholder="Search..." style="padding: 5px; border: 1px solid #ced4da; border-radius: 4px;">
+      </div>
+    `);
+    
+  // Create data table
+  const table = tableContainer.append("table")
+    .style("width", "100%")
+    .style("border-collapse", "collapse");
+    
+  // Create table header
+  const thead = table.append("thead")
+    .style("background", "#f8f9fa");
+    
+  thead.append("tr")
+    .selectAll("th")
+    .data(["ID", "Date", "Category", "Value", "Status", "Actions"])
+    .join("th")
+      .style("padding", "10px")
+      .style("text-align", "left")
+      .style("border-bottom", "2px solid #dee2e6")
+      .text(d => d);
+      
+  // Create table body
+  const tbody = table.append("tbody");
+  
+  // Initialize charts
+  createMainChart(data);
+  createPieChart(data);
+  updateTable(data);
+  
+  // Functions to create and update charts
+  function createMainChart(data) {
+    // Clear previous chart
+    d3.select("#chart-container svg").remove();
+    
+    // Set up dimensions
+    const margin = {top: 10, right: 30, bottom: 30, left: 60};
+    const width = chartContainer.node().getBoundingClientRect().width - margin.left - margin.right - 40;
+    const height = 300;
+    
+    // Create SVG
+    const svg = chartContainer.append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+        
+    // Create scales
+    const x = d3.scaleTime()
+      .domain(d3.extent(data, d => d.date))
+      .range([0, width]);
+      
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(data, d => d.value) * 1.1])
+      .nice()
+      .range([height, 0]);
+      
+    // Create color scale
+    const color = d3.scaleOrdinal()
+      .domain(categories)
+      .range(d3.schemeCategory10);
+      
+    // Add axes
+    svg.append("g")
+      .attr("class", "x-axis")
+      .attr("transform", `translate(0,${height})`)
+      .call(d3.axisBottom(x));
+      
+    svg.append("g")
+      .attr("class", "y-axis")
+      .call(d3.axisLeft(y));
+      
+    // Add grid lines
+    svg.append("g")
+      .attr("class", "grid")
+      .call(d3.axisLeft(y)
+        .tickSize(-width)
+        .tickFormat("")
+      )
+      .style("stroke-opacity", 0.1);
+      
+    // Group data by category
+    const nestedData = d3.group(data, d => d.category);
+    
+    // Create line generator
+    const line = d3.line()
+      .x(d => x(d.date))
+      .y(d => y(d.value))
+      .curve(d3.curveMonotoneX);
+      
+    // Add lines
+    svg.selectAll(".line")
+      .data(nestedData)
+      .join("path")
+        .attr("class", "line")
+        .attr("fill", "none")
+        .attr("stroke", ([key]) => color(key))
+        .attr("stroke-width", 2)
+        .attr("d", ([_, values]) => line(values))
+        .attr("opacity", 0)
+        .transition()
+        .duration(1000)
+        .attr("opacity", 0.7);
+        
+    // Add tooltip
+    const tooltip = d3.select("body").append("div")
+      .attr("class", "tooltip")
+      .style("position", "absolute")
+      .style("visibility", "hidden")
+      .style("background", "white")
+      .style("border", "1px solid #ddd")
+      .style("border-radius", "4px")
+      .style("padding", "10px")
+      .style("box-shadow", "0 2px 4px rgba(0,0,0,0.1)")
+      .style("pointer-events", "none")
+      .style("font-size", "12px");
+      
+    // Add interactive elements for tooltip
+    const hoverGroups = svg.append("g")
+      .attr("class", "hover-elements");
+      
+    // Create voronoi for better hover detection
+    const allPoints = data.map(d => ({
+      x: x(d.date),
+      y: y(d.value),
+      data: d
+    }));
+    
+    const delaunay = d3.Delaunay.from(
+      allPoints,
+      d => d.x,
+      d => d.y
+    );
+    
+    const voronoi = delaunay.voronoi([0, 0, width, height]);
+    
+    hoverGroups.selectAll(".voronoi-cell")
+      .data(allPoints)
+      .join("path")
+        .attr("class", "voronoi-cell")
+        .attr("d", (d, i) => voronoi.renderCell(i))
+        .attr("fill", "none")
+        .attr("pointer-events", "all")
+        .on("mouseover", function(event, d) {
+          // Highlight point
+          svg.append("circle")
+            .attr("class", "hover-point")
+            .attr("cx", d.x)
+            .attr("cy", d.y)
+            .attr("r", 5)
+            .attr("fill", color(d.data.category))
+            .attr("stroke", "white");
+            
+          // Show tooltip
+          tooltip
+            .style("visibility", "visible")
+            .html(`
+              <div style="margin-bottom: 5px;"><strong>${d.data.category}</strong></div>
+              <div>Date: ${d.data.date.toLocaleDateString()}</div>
+              <div>Value: ${d.data.value}</div>
+            `)
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mousemove", function(event) {
+          tooltip
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", function() {
+          svg.selectAll(".hover-point").remove();
+          tooltip.style("visibility", "hidden");
+        });
+        
+    // Add legend
+    const legend = svg.append("g")
+      .attr("class", "legend")
+      .attr("transform", `translate(${width - 120}, 10)`);
+      
+    legend.selectAll(".legend-item")
+      .data(categories)
+      .join("g")
+        .attr("class", "legend-item")
+        .attr("transform", (d, i) => `translate(0, ${i * 20})`)
+        .each(function(d) {
+          const g = d3.select(this);
+          
+          g.append("line")
+            .attr("x1", 0)
+            .attr("x2", 20)
+            .attr("stroke", color(d))
+            .attr("stroke-width", 2);
+            
+          g.append("text")
+            .attr("x", 25)
+            .attr("y", 5)
+            .text(d)
+            .style("font-size", "12px");
+        });
+        
+    // Chart type change handler
+    d3.select("#chart-type").on("change", function() {
+      const chartType = this.value;
+      updateChartType(chartType, data, svg, x, y, height, color, nestedData);
+    });
+  }
+  
+  function updateChartType(type, data, svg, x, y, height, color, nestedData) {
+    if (type === "line") {
+      // Line chart (already created)
+      svg.selectAll(".area").remove();
+      svg.selectAll(".bar").remove();
+      
+      // Create line generator
+      const line = d3.line()
+        .x(d => x(d.date))
+        .y(d => y(d.value))
+        .curve(d3.curveMonotoneX);
+        
+      // Add or update lines
+      const lines = svg.selectAll(".line")
+        .data(nestedData);
+        
+      lines.enter()
+        .append("path")
+        .attr("class", "line")
+        .merge(lines)
+        .attr("fill", "none")
+        .attr("stroke", ([key]) => color(key))
+        .attr("stroke-width", 2)
+        .attr("d", ([_, values]) => line(values))
+        .attr("opacity", 0)
+        .transition()
+        .duration(750)
+        .attr("opacity", 0.7);
+    } else if (type === "area") {
+      // Area chart
+      svg.selectAll(".line").remove();
+      svg.selectAll(".bar").remove();
+      
+      // Create area generator
+      const area = d3.area()
+        .x(d => x(d.date))
+        .y0(height)
+        .y1(d => y(d.value))
+        .curve(d3.curveMonotoneX);
+        
+      // Add areas
+      const areas = svg.selectAll(".area")
+        .data(nestedData);          d3.select(this).select("circle")
             .attr("stroke", matches ? "#333" : "#fff")
             .attr("stroke-width", matches ? 2.5 : 1.5);
             
@@ -818,7 +2151,256 @@ function createGeoVisualization(mapData, dataPoints) {
         .data(d.history)
         .join("circle")
           .attr("class", "history-point")
-          .attr("cx", d => xScale(d.date))### Real-World Examples and Advanced Patterns
+          .attr("cx", d => xScale(d.date))
+          .attr("cy", d => yScale(d.value))
+          .attr("r", 0)
+          .attr("fill", pointColorScale(d.category))
+          .transition()
+          .duration(1000)
+          .delay((d, i) => i * 100 + 1000)
+          .attr("r", 4);
+    }
+  }
+  
+  // Function to hide detail panel
+  function hideDetailPanel() {
+    const detailPanel = d3.select("#detail-panel");
+    
+    if (!detailPanel.empty()) {
+      detailPanel
+        .transition()
+        .duration(300)
+        .style("opacity", 0)
+        .style("transform", "translateX(20px)")
+        .remove();
+    }
+  }
+  
+  // Add map controls
+  function addMapControls() {
+    // Create control container
+    const controls = d3.select("#geo-viz")
+      .append("div")
+      .attr("class", "map-controls")
+      .style("position", "absolute")
+      .style("top", "10px")
+      .style("left", "10px")
+      .style("display", "flex")
+      .style("flex-direction", "column")
+      .style("gap", "10px")
+      .style("background", "rgba(255, 255, 255, 0.9)")
+      .style("border-radius", "4px")
+      .style("padding", "10px")
+      .style("box-shadow", "0 1px 5px rgba(0,0,0,0.2)");
+      
+    // Add zoom controls
+    const zoomControls = controls.append("div")
+      .style("display", "flex")
+      .style("gap", "5px");
+      
+    zoomControls.append("button")
+      .attr("class", "zoom-in")
+      .attr("aria-label", "Zoom in")
+      .style("width", "30px")
+      .style("height", "30px")
+      .style("border", "1px solid #ccc")
+      .style("border-radius", "4px")
+      .style("background", "white")
+      .style("cursor", "pointer")
+      .style("font-size", "16px")
+      .text("+")
+      .on("click", function() {
+        svg.transition().duration(300).call(
+          zoom.scaleBy, 1.5
+        );
+      });
+      
+    zoomControls.append("button")
+      .attr("class", "zoom-out")
+      .attr("aria-label", "Zoom out")
+      .style("width", "30px")
+      .style("height", "30px")
+      .style("border", "1px solid #ccc")
+      .style("border-radius", "4px")
+      .style("background", "white")
+      .style("cursor", "pointer")
+      .style("font-size", "16px")
+      .text("−")
+      .on("click", function() {
+        svg.transition().duration(300).call(
+          zoom.scaleBy, 0.75
+        );
+      });
+      
+    zoomControls.append("button")
+      .attr("class", "zoom-reset")
+      .attr("aria-label", "Reset zoom")
+      .style("width", "30px")
+      .style("height", "30px")
+      .style("border", "1px solid #ccc")
+      .style("border-radius", "4px")
+      .style("background", "white")
+      .style("cursor", "pointer")
+      .style("font-size", "14px")
+      .text("↺")
+      .on("click", function() {
+        svg.transition().duration(750).call(
+          zoom.transform,
+          d3.zoomIdentity
+        );
+      });
+      
+    // Add layer controls
+    const layerControls = controls.append("div")
+      .style("margin-top", "5px");
+      
+    // Add layer toggles
+    const layers = [
+      {id: "countries", label: "Countries", active: true},
+      {id: "points", label: "Data Points", active: true},
+      {id: "grid", label: "Grid Lines", active: false}
+    ];
+    
+    layerControls.selectAll(".layer-control")
+      .data(layers)
+      .join("div")
+        .attr("class", "layer-control")
+        .style("display", "flex")
+        .style("align-items", "center")
+        .style("margin-bottom", "5px")
+        .each(function(d) {
+          const control = d3.select(this);
+          
+          // Add checkbox
+          control.append("input")
+            .attr("type", "checkbox")
+            .attr("id", `layer-${d.id}`)
+            .attr("checked", d.active ? true : null)
+            .style("margin-right", "5px")
+            .on("change", function() {
+              toggleLayer(d.id, this.checked);
+            });
+            
+          // Add label
+          control.append("label")
+            .attr("for", `layer-${d.id}`)
+            .style("font-size", "12px")
+            .text(d.label);
+        });
+        
+    // Add color legend
+    controls.append("div")
+      .attr("class", "color-legend")
+      .style("margin-top", "10px")
+      .html(`
+        <div style="font-size: 12px; margin-bottom: 5px;">Country Values</div>
+        <div style="display: flex; height: 10px; width: 100%;">
+          <div style="flex-grow: 1; background: linear-gradient(to right, #d73027, #ffffbf, #1a9850);"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px;">
+          <div>-1.0</div>
+          <div>0.0</div>
+          <div>1.0</div>
+        </div>
+      `);
+      
+    // Add data point legend
+    const pointLegend = controls.append("div")
+      .attr("class", "point-legend")
+      .style("margin-top", "15px");
+      
+    pointLegend.append("div")
+      .style("font-size", "12px")
+      .style("margin-bottom", "5px")
+      .text("Data Points");
+      
+    // Add legend items
+    const categories = ["low", "medium", "high"];
+    
+    pointLegend.selectAll(".legend-item")
+      .data(categories)
+      .join("div")
+        .attr("class", "legend-item")
+        .style("display", "flex")
+        .style("align-items", "center")
+        .style("margin-bottom", "3px")
+        .each(function(d) {
+          const item = d3.select(this);
+          
+          // Add color circle
+          item.append("div")
+            .style("width", "10px")
+            .style("height", "10px")
+            .style("border-radius", "50%")
+            .style("background", pointColorScale(d))
+            .style("margin-right", "5px");
+            
+          // Add label
+          item.append("div")
+            .style("font-size", "10px")
+            .text(d);
+        });
+  }
+  
+  // Function to toggle map layers
+  function toggleLayer(layerId, visible) {
+    if (layerId === "countries") {
+      g.selectAll(".country")
+        .style("visibility", visible ? "visible" : "hidden");
+    } else if (layerId === "points") {
+      g.selectAll(".data-point")
+        .style("visibility", visible ? "visible" : "hidden");
+    } else if (layerId === "grid") {
+      // Create or remove grid
+      if (visible) {
+        addGrid();
+      } else {
+        g.selectAll(".grid-line").remove();
+      }
+    }
+  }
+  
+  // Function to add graticule grid
+  function addGrid() {
+    // Create graticule generator
+    const graticule = d3.geoGraticule()
+      .step([10, 10]); // Grid spacing
+      
+    // Add graticule lines
+    g.append("path")
+      .attr("class", "grid-line")
+      .datum(graticule())
+      .attr("d", path)
+      .attr("fill", "none")
+      .attr("stroke", "#ccc")
+      .attr("stroke-width", 0.5)
+      .attr("stroke-opacity", 0.5)
+      .attr("stroke-dasharray", "2,2");
+      
+    // Add graticule outline
+    g.append("path")
+      .attr("class", "grid-line")
+      .datum(graticule.outline())
+      .attr("d", path)
+      .attr("fill", "none")
+      .attr("stroke", "#ccc")
+      .attr("stroke-width", 0.5)
+      .attr("stroke-opacity", 0.5);
+  }
+  
+  // Add controls
+  addMapControls();
+  
+  // Return public API
+  return {
+    projection,
+    path,
+    showDetailPanel,
+    hideDetailPanel,
+    toggleLayer
+  };
+}
+```### Real-World Examples and Advanced Patterns
 
 ```javascript
 // 1. Responsive Dashboard Layout
